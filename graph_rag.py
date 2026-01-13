@@ -15,7 +15,7 @@ node_embeddings = {}
 G = nx.DiGraph()
 
 def init_graph_transformer(llm):
-    return LLMGraphTransformer(llm=llm, allowed_nodes=['events'], allowed_relationships=['causes', 'correlates'])
+    return LLMGraphTransformer(llm=llm)
 
 def set_embeddings(model):
     global embedding_model, node_embeddings
