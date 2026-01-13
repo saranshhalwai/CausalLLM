@@ -3,6 +3,7 @@ import argparse
 import sys
 from glob import glob
 from dotenv import load_dotenv
+import graph_rag
 
 # Load environment variables
 load_dotenv()
@@ -12,12 +13,11 @@ load_dotenv()
 llm = None
 embeddings = None
 
-import graph_rag
+
 
 def init_components():
     global llm, embeddings
     from langchain_huggingface import HuggingFaceEmbeddings
-    from langchain_chroma import Chroma
     
     # 1. Embeddings
     print("Initializing Embeddings (all-MiniLM-L6-v2)...")
@@ -46,7 +46,6 @@ def init_components():
     graph_rag.load_graph()
 
 def ingest_data(input_pattern="PS1/text_outputs/*.txt", persist_dir="./chroma_db"):
-    from langchain_chroma import Chroma
     from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_core.documents import Document
 
@@ -77,13 +76,7 @@ def ingest_data(input_pattern="PS1/text_outputs/*.txt", persist_dir="./chroma_db
     splits = splitter.split_documents(docs)
     print(f"Split into {len(splits)} chunks.")
 
-    # Ingest Vector
-    print("Creating Vector Store...")
-    vectorstore = Chroma.from_documents(
-        documents=splits,
-        embedding=embeddings,
-        persist_directory=persist_dir
-    )
+
     print(f"Ingestion complete. Database saved to {persist_dir}")
     
     # Graph Ingestion
@@ -95,7 +88,6 @@ def ingest_data(input_pattern="PS1/text_outputs/*.txt", persist_dir="./chroma_db
     print("Graph Ingestion complete.")
 
 def query_rag(query_text, persist_dir="./chroma_db"):
-    from langchain_chroma import Chroma
     from langchain_chroma import Chroma
     from langchain_core.prompts import ChatPromptTemplate
 

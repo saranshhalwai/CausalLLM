@@ -3,7 +3,6 @@ import networkx as nx
 import pickle
 import numpy as np
 from langchain_experimental.graph_transformers import LLMGraphTransformer
-from langchain_core.documents import Document
 from tqdm import tqdm
 
 # Global embeddings model
@@ -69,7 +68,7 @@ def load_graph(persist_path="graph_data.pkl"):
             G = pickle.load(f)
         print(f"Loaded graph with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
         # Clear embedding cache on load
-        node_embeddings = {}
+
     else:
         print("No existing graph found. Please ingest data first.")
 

@@ -1,10 +1,7 @@
-import argparse
-import sys
 import os
 import json
 import rag_pipeline
-import rag_pipeline
-from rag_pipeline import query_rag, init_components, get_rag_chain, format_docs
+from rag_pipeline import init_components, get_rag_chain, format_docs
 
 # Access llm via rag_pipeline.llm after init
 # For simplicity, we will import the chain components and run them here, or refactor rag_pipeline.
@@ -14,7 +11,6 @@ from rag_pipeline import query_rag, init_components, get_rag_chain, format_docs
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
 
 def evaluate_metrics(question, answer, context_str):
     """

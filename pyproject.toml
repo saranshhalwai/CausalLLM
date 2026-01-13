@@ -19,3 +19,8 @@ dependencies = [
     "langchain-ollama>=0.0.1",
     "tqdm>=4.67.1",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.11",
+]
