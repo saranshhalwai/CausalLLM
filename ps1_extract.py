@@ -4,6 +4,7 @@ Simple PDF text extraction for the PS1 folder.
 Saves per-PDF .txt files to PS1/text_outputs/ and a summaries.json.
 Uses PyPDF2 first with a pdfminer.six fallback when PyPDF2 returns little or no text.
 """
+
 import json
 from pathlib import Path
 
@@ -80,7 +81,7 @@ def main():
             "extract_method": used,
             "chars": len(text),
             "words": len(text.split()),
-            "preview": (text[:1000].replace("\n", " ") if text else "")
+            "preview": (text[:1000].replace("\n", " ") if text else ""),
         }
         summaries.append(summary)
 
@@ -89,9 +90,10 @@ def main():
 
     print("Done. Outputs written to", str(outdir))
     for s in summaries:
-        print(f"- {s['filename']}: pages={s['pages']}, words={s['words']}, method={s['extract_method']}")
+        print(
+            f"- {s['filename']}: pages={s['pages']}, words={s['words']}, method={s['extract_method']}"
+        )
 
 
 if __name__ == "__main__":
     main()
-
