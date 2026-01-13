@@ -13,4 +13,9 @@ dependencies = [
     "pdfminer-six>=20221105",
     "pypdf2>=3.0.0",
     "python-dotenv>=1.2.1",
+    "langchain-experimental>=0.0.10",
+    "networkx>=3.0",
+    "dotenv>=0.9.9",
+    "langchain-ollama>=0.0.1",
+    "tqdm>=4.67.1",
 ]

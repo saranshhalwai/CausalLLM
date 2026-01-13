@@ -12,6 +12,8 @@ load_dotenv()
 llm = None
 embeddings = None
 
+import graph_rag
+
 def init_components():
     global llm, embeddings
     from langchain_huggingface import HuggingFaceEmbeddings
@@ -20,9 +22,15 @@ def init_components():
     # 1. Embeddings
     print("Initializing Embeddings (all-MiniLM-L6-v2)...")
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    graph_rag.set_embeddings(embeddings)
     
     # 2. LLM
-    if os.getenv("GROQ_API_KEY"):
+    # Priority: Ollama > Groq > Gemini
+    if os.getenv("OLLAMA_MODEL"):
+        print(f"Using Ollama LLM ({os.getenv('OLLAMA_MODEL')})...")
+        from langchain_ollama import ChatOllama
+        llm = ChatOllama(model=os.getenv("OLLAMA_MODEL"), temperature=0)
+    elif os.getenv("GROQ_API_KEY"):
         print("Using Groq LLM...")
         from langchain_groq import ChatGroq
         llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
@@ -31,22 +39,25 @@ def init_components():
         from langchain_google_genai import ChatGoogleGenerativeAI
         llm = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0)
     else:
-        print("Error: No API Key found. Please set GROQ_API_KEY or GOOGLE_API_KEY in .env")
+        print("Error: No API Key found. Please set OLLAMA_MODEL, GROQ_API_KEY, or GOOGLE_API_KEY in .env")
         sys.exit(1)
+        
+    # 3. Load Graph
+    graph_rag.load_graph()
 
-def ingest_data(persist_dir="./chroma_db"):
+def ingest_data(input_pattern="PS1/text_outputs/*.txt", persist_dir="./chroma_db"):
     from langchain_chroma import Chroma
     from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_core.documents import Document
 
     init_components()
     
-    print("Loading text files...")
+    print(f"Loading text files from {input_pattern}...")
     docs = []
-    # Read text files from PS1/text_outputs
-    files = glob("PS1/text_outputs/*.txt")
+    # Read text files
+    files = glob(input_pattern)
     if not files:
-        print("No text files found in PS1/text_outputs. Please run ps1_extract.py first.")
+        print(f"No text files found matching {input_pattern}")
         return
 
     for fpath in files:
@@ -61,30 +72,32 @@ def ingest_data(persist_dir="./chroma_db"):
 
     print(f"Loaded {len(docs)} documents.")
     
-    # Splitter
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    # Text Splitting (Vector)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=100)
     splits = splitter.split_documents(docs)
     print(f"Split into {len(splits)} chunks.")
 
-    # Ingest
+    # Ingest Vector
     print("Creating Vector Store...")
-    # Chroma handles persistence automatically if directory is specified? 
-    # In newer langchain-chroma, we might need explicitly setup.
-    # But usually .from_documents with persist_directory works or we instantiate client.
-    
     vectorstore = Chroma.from_documents(
         documents=splits,
         embedding=embeddings,
         persist_directory=persist_dir
     )
     print(f"Ingestion complete. Database saved to {persist_dir}")
+    
+    # Graph Ingestion
+    print("Starting Graph Extraction...")
+    # For graph extraction, we use the raw docs (or large chunks). 
+    # Using raw docs might be too big for LLM context window?
+    # Recursive splitter chunks (1000 chars) are safer.
+    graph_rag.extract_and_store_graph(splits, llm)
+    print("Graph Ingestion complete.")
 
 def query_rag(query_text, persist_dir="./chroma_db"):
     from langchain_chroma import Chroma
     from langchain_chroma import Chroma
     from langchain_core.prompts import ChatPromptTemplate
-    # from langchain_core.runnables import RunnablePassthrough # Moved inside get_rag_chain
-    # from langchain_core.output_parsers import StrOutputParser # Moved inside get_rag_chain
 
     init_components()
     
@@ -98,7 +111,7 @@ def query_rag(query_text, persist_dir="./chroma_db"):
     # Prompt
     # We want "evidence-based" answers suitable for Causal Analysis
     template = """You are a Causal Commonsense Analysis assistant. 
-    Answer the question strictly based on the provided context. 
+    Answer the question strictly based on the provided context and graph relationships.
     If the context does not contain the answer, say "I cannot find the answer in the provided documents."
     
     Prioritize explaining the CAUSE and EFFECT relationships found in the text.
@@ -106,6 +119,9 @@ def query_rag(query_text, persist_dir="./chroma_db"):
 
     Context:
     {context}
+    
+    Graph Insights:
+    {graph_context}
 
     Question: {question}
     
@@ -132,7 +148,7 @@ def get_rag_chain(retriever, prompt=None):
     if prompt is None:
          # Default Prompt
         template = """You are a Causal Commonsense Analysis assistant. 
-        Answer the question strictly based on the provided context. 
+        Answer the question strictly based on the provided context and graph relationships.
         If the context does not contain the answer, say "I cannot find the answer in the provided documents."
         
         Prioritize explaining the CAUSE and EFFECT relationships found in the text.
@@ -140,6 +156,9 @@ def get_rag_chain(retriever, prompt=None):
 
         Context:
         {context}
+        
+        Graph Insights:
+        {graph_context}
 
         Question: {question}
         
@@ -154,7 +173,11 @@ def get_rag_chain(retriever, prompt=None):
     )
 
     rag_chain_with_source = RunnableParallel(
-        {"context": retriever, "question": RunnablePassthrough()}
+        {
+            "context": retriever,
+            "question": RunnablePassthrough(),
+            "graph_context": lambda x: graph_rag.get_graph_context(x)
+        }
     ).assign(answer=rag_chain_from_docs)
 
     return rag_chain_with_source
@@ -163,12 +186,13 @@ def get_rag_chain(retriever, prompt=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simple RAG for Corporate Reports")
     parser.add_argument("--ingest", action="store_true", help="Ingest PDFs from PS1/text_outputs")
+    parser.add_argument("--input_pattern", type=str, default="PS1/text_outputs/*.txt", help="Glob pattern for input text files")
     parser.add_argument("--query", type=str, help="Query string to ask the system")
     
     args = parser.parse_args()
     
     if args.ingest:
-        ingest_data()
+        ingest_data(input_pattern=args.input_pattern)
     elif args.query:
         query_rag(args.query)
     else:
